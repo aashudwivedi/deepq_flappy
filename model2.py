@@ -10,7 +10,31 @@ from skimage.transform import rotate
 from skimage.viewer import ImageViewer
 
 
-class DQNAgent:
+class GameEnv(object):
+    def __init__(self):
+        self.game = flappy.GameState()
+        image, _, _ = self.game.frame_step(0)
+        image = self.pre_process_image(image)
+        self.state = np.concatenate([image] * 4, axis=3)
+
+    @staticmethod
+    def pre_process_image(image):
+        image = color.rgb2gray(image)
+        image = transform.resize(image, (80, 80))
+        image = exposure.rescale_intensity(image, out_range=(0, 255))
+        return image.reshape(1, 80, 80, 1)
+
+    def get_state(self):
+        return self.state
+
+    def step(self, action):
+        image, reward, done = self.game.frame_step(action)
+        image = self.pre_process_image(image)
+        self.state[:, :, :, :3] = image
+        return self.state, reward, done
+
+
+class DQNAgent(object):
     ACTIONS = [0, 1]
 
     def __init__(self, action_size):
@@ -27,7 +51,7 @@ class DQNAgent:
     def _build_model(self, n_classes):
         model = models.Sequential()
         model.add(layers.Conv2D(filters=32, kernel_size=(3, 3), padding='same',
-                                activation='relu', input_shape=(80, 80, 3),
+                                activation='relu', input_shape=(80, 80, 4),
                                 kernel_initializer='glorot_normal',
                                 bias_initializer='zeros'))
 
@@ -88,20 +112,11 @@ class DQNAgent:
             self.epsilon *= self.epsilon_decay
 
 
-def pre_process_image(image):
-    color.rgb2gray(image)
-    image = transform.resize(image, (80, 80))
-    image = exposure.rescale_intensity(image, out_range=(0, 255))
-    return image.reshape(1, 80, 80, 3)
-
-
-def build_replay(game, agent):
-    image, reward, done = game.frame_step(0)
-    state = pre_process_image(image)
-    for i in range(50000):
+def build_replay(game_env, agent):
+    state = game_env.get_state()
+    for i in range(2000):
         action = np.random.choice([0, 1], p=[0.9, 0.1])
-        image, reward, done = game.frame_step(action)
-        next_state = pre_process_image(image)
+        next_state, reward, done = game_env.step(action)
         agent.remember(state, action, reward, next_state, done)
         if done:
             print(reward)
@@ -111,23 +126,15 @@ def build_replay(game, agent):
 def train(episode_count):
     # initialize gym environment and the agent
     agent = DQNAgent(2)
-    game = flappy.GameState()
+    game_env = GameEnv()
+    build_replay(game_env, agent)
 
-    build_replay(game, agent)
-
+    state = game_env.state
     for e in range(episode_count):
-        print('dummy step')
-        image, reward, done = game.frame_step(0)
-        state = pre_process_image(image)
-        print('first image')
-
         for time_t in range(500):
             action = agent.act(state)
-            image, reward, done = game.frame_step(action)
-            next_state = pre_process_image(image)
-
+            next_state, reward, done = game_env.step(action)
             agent.remember(state, action, reward, next_state, done)
-
             state = next_state
 
             if done:
