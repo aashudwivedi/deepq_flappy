@@ -9,6 +9,7 @@ import os, sys
 # set SDL to use the dummy NULL video driver,
 #   so it doesn't need a windowing system.
 
+
 def sprite(name):
     return pygame.image.load(
         os.path.join(DIR_PATH, 'assets/sprites/{}'.format(name)))
@@ -52,11 +53,11 @@ def load():
     # base (ground) sprite
     IMAGES['base'] = sprite('base.png').convert_alpha()
 
-    SOUNDS['die'] = audio('die')
-    SOUNDS['hit'] = audio('hit')
-    SOUNDS['point'] = audio('point')
-    SOUNDS['swoosh'] = audio('swoosh')
-    SOUNDS['wing'] = audio('wing')
+    # SOUNDS['die'] = audio('die')
+    # SOUNDS['hit'] = audio('hit')
+    # SOUNDS['point'] = audio('point')
+    # SOUNDS['swoosh'] = audio('swoosh')
+    # SOUNDS['wing'] = audio('wing')
 
     # select random background sprites
     IMAGES['background'] = sprite(BACKGROUND_PATH).convert()
@@ -89,6 +90,7 @@ def load():
     )
 
     return IMAGES, SOUNDS, HITMASKS
+
 
 def getHitmask(image):
     """returns a hitmask using an image's alpha."""

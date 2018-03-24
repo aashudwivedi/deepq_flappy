@@ -3,7 +3,7 @@ import sys
 import random
 import os
 
-os.environ["SDL_VIDEODRIVER"] = "dummy"
+# os.environ["SDL_VIDEODRIVER"] = "dummy"
 
 import pygame
 from . import flappy_bird_utils
@@ -17,7 +17,7 @@ SCREENHEIGHT = 512
 
 FPSCLOCK = pygame.time.Clock()
 
-display = False
+display = True
 
 if display:
     pygame.init()

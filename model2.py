@@ -1,13 +1,16 @@
 import numpy as np
+import os
 import random
 
 from collections import deque
-from keras import layers, models, optimizers
+from keras import layers, models, optimizers, callbacks
 from game import wrapped_flappy_bird as flappy
 
 from skimage import transform, color, exposure
 from skimage.transform import rotate
 from skimage.viewer import ImageViewer
+
+out_dir = 'output/' if os.path.exists('output/') else '/output/'
 
 
 class GameEnv(object):
@@ -39,7 +42,6 @@ class GameEnv(object):
         else:
             self.score += reward
 
-
         return self.state, reward, done, score
 
     def get_score(self):
@@ -48,17 +50,22 @@ class GameEnv(object):
 
 class DQNAgent(object):
     ACTIONS = [0, 1]
+    MAX_MEMORY = 10000
 
     def __init__(self, action_size):
         self.action_size = action_size
 
-        self.memory = deque(maxlen=50000)
+        self.memory = deque(maxlen=self.MAX_MEMORY)
         self.gamma = 0.95    # discount rate
         self.epsilon = 0.1  # exploration rate
-        self.epsilon_min = 0.01
+        self.epsilon_min = 0.0001
         self.epsilon_decay = 0.995
-        self.learning_rate = 0.001
+        self.learning_rate = 1e-4
         self.model = self._build_model(self.action_size)
+        self.callback = callbacks.TensorBoard(
+            log_dir=out_dir, histogram_freq=0,
+            write_graph=True, write_grads=True,
+            write_images=True)
 
     def _build_model(self, n_classes):
         model = models.Sequential()
@@ -86,10 +93,16 @@ class DQNAgent(object):
                                kernel_initializer='glorot_normal',
                                bias_initializer='zeros'))
 
-        optimizer = optimizers.Adam(lr=0.0001)
+        optimizer = optimizers.Adam(lr=self.learning_rate)
         model.compile(optimizer=optimizer, loss="mse")
         model.summary()
         return model
+
+    def save_weights(self):
+        model_json = self.model.to_json()
+        with open(os.path.join(out_dir, 'model.json'), 'w') as f:
+            f.write(model_json)
+        self.model.save_weights(os.path.join(out_dir, 'model.h5'))
 
     def remember(self, state, action, reward, next_state, done):
         self.memory.append((state, action, reward, next_state, done))
@@ -119,7 +132,8 @@ class DQNAgent(object):
                        np.amax(self.model.predict(next_state)[0])
             target_f = self.model.predict(state)
             target_f[0][action] = target
-            self.model.fit(state, target_f, epochs=1, verbose=0)
+            self.model.fit(state, target_f, epochs=1, verbose=0,
+                           callbacks=[self.callback])
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
 
@@ -149,7 +163,6 @@ def train(episode_count):
             next_state, reward, done, score = game_env.step(action)
             agent.remember(state, action, reward, next_state, done)
             state = next_state
-            score += reward
 
             if done:
                 print("episode: {}/{}, score: {}".format(
@@ -157,6 +170,7 @@ def train(episode_count):
                 break
         # train the agent with the experience of the episode
         agent.replay(32)
+        agent.save_weights()
 
 
 if __name__ == '__main__':
