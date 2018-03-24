@@ -13,9 +13,10 @@ from skimage.viewer import ImageViewer
 class GameEnv(object):
     def __init__(self):
         self.game = flappy.GameState()
-        image, _, _ = self.game.frame_step(0)
+        image, reward, _ = self.game.frame_step(0)
         image = self.pre_process_image(image)
         self.state = np.concatenate([image] * 4, axis=3)
+        self.score = reward
 
     @staticmethod
     def pre_process_image(image):
@@ -31,7 +32,18 @@ class GameEnv(object):
         image, reward, done = self.game.frame_step(action)
         image = self.pre_process_image(image)
         self.state[:, :, :, :3] = image
-        return self.state, reward, done
+
+        score = self.score
+        if done:
+            self.score = 0
+        else:
+            self.score += reward
+
+
+        return self.state, reward, done, score
+
+    def get_score(self):
+        return self.score
 
 
 class DQNAgent(object):
@@ -116,10 +128,10 @@ def build_replay(game_env, agent):
     state = game_env.get_state()
     for i in range(2000):
         action = np.random.choice([0, 1], p=[0.9, 0.1])
-        next_state, reward, done = game_env.step(action)
+        next_state, reward, done, score = game_env.step(action)
         agent.remember(state, action, reward, next_state, done)
         if done:
-            print(reward)
+            print('score = {}'.format(score))
         state = next_state
 
 
@@ -131,15 +143,17 @@ def train(episode_count):
 
     state = game_env.state
     for e in range(episode_count):
+        score = 0
         for time_t in range(500):
             action = agent.act(state)
-            next_state, reward, done = game_env.step(action)
+            next_state, reward, done, score = game_env.step(action)
             agent.remember(state, action, reward, next_state, done)
             state = next_state
+            score += reward
 
             if done:
                 print("episode: {}/{}, score: {}".format(
-                    e, episode_count, reward))
+                    e, episode_count, score))
                 break
         # train the agent with the experience of the episode
         agent.replay(32)

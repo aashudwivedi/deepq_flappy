@@ -4,6 +4,10 @@ import os
 
 DIR_PATH = os.path.dirname(__file__)
 
+import os, sys
+
+# set SDL to use the dummy NULL video driver,
+#   so it doesn't need a windowing system.
 
 def sprite(name):
     return pygame.image.load(

@@ -1,20 +1,31 @@
 import numpy as np
 import sys
 import random
+import os
+
+os.environ["SDL_VIDEODRIVER"] = "dummy"
+
 import pygame
 from . import flappy_bird_utils
-import pygame.surfarray as surfarray
 from pygame.locals import *
 from itertools import cycle
 
 FPS = 30
-SCREENWIDTH  = 288
+SCREENWIDTH = 288
 SCREENHEIGHT = 512
 
-pygame.init()
+
 FPSCLOCK = pygame.time.Clock()
-SCREEN = pygame.display.set_mode((SCREENWIDTH, SCREENHEIGHT))
-pygame.display.set_caption('Flappy Bird')
+
+display = False
+
+if display:
+    pygame.init()
+    SCREEN = pygame.display.set_mode((SCREENWIDTH, SCREENHEIGHT))
+    pygame.display.set_caption('Flappy Bird')
+else:
+    pygame.init()
+    SCREEN = pygame.display.set_mode((1, 1))
 
 IMAGES, SOUNDS, HITMASKS = flappy_bird_utils.load()
 PIPEGAPSIZE = 100 # gap between upper and lower part of pipe
@@ -152,6 +163,7 @@ class GameState:
         #print self.upperPipes[0]['y'] + PIPE_HEIGHT - int(BASEY * 0.2)
         return image_data, reward, terminal
 
+
 def getRandomPipe():
     """returns a randomly generated pipe"""
     # y of gap between upper and lower pipe
@@ -215,6 +227,7 @@ def checkCrash(player, upperPipes, lowerPipes):
                 return True
 
     return False
+
 
 def pixelCollision(rect1, rect2, hitmask1, hitmask2):
     """Checks if two objects collide and not just their rects"""
