@@ -183,7 +183,6 @@ class DQNAgent(object):
             y[i] = target_f
             x[i, :, :, :] = state
 
-        import ipdb; ipdb.set_trace()
         self.model.fit(x, y, epochs=10, verbose=0,
                        callbacks=[self.callback])
 
