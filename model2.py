@@ -1,19 +1,47 @@
+import argparse
 import os
 import numpy as np
+import pickle
 import random
 
 from collections import deque
 from keras import layers, models, optimizers, callbacks
-
 from skimage import transform, color, exposure
-import argparse
+from PIL import Image
+
 
 out_dir = 'output/' if os.path.exists('output/') else '/output/'
+in_dir = 'input/' if os.path.exists('input/') else '/input/'
+
+if os.path.exists('input/'):
+    is_local = True
+
 
 RUN_NAME = 'first'
 
 IMAGE_WIDTH = 80
 IMAGE_HEIGHT = 80
+
+
+def save_state(count, state):
+    path = out_dir + RUN_NAME + "/images"
+    print(path)
+    if not os.path.exists(path):
+        os.mkdir(path)
+
+    dir_path = path + "/" + str(count)
+
+    if not os.path.exists(dir_path):
+        os.mkdir(dir_path)
+
+    # for i in range(4):
+    #     array = state[:, :, :, i].reshape(IMAGE_HEIGHT, IMAGE_WIDTH, 1)
+    #     array = array * 255
+    #     image = Image.fromarray(array, mode='RGB')
+    #     image.save(dir_path + "/" + str(i) + ".bmp")
+
+    image = Image.fromarray(state, mode='RGB')
+    image.save(dir_path + "/" + 'image' + ".bmp")
 
 
 class GameEnv(object):
@@ -22,20 +50,24 @@ class GameEnv(object):
         self.width = IMAGE_WIDTH
         self.height = IMAGE_HEIGHT
 
+        self.count = 0
         self.p = PLE(FlappyBird(), fps=30, display_screen=display_screen)
         self.p.init()
-        self.p.act(0)
         self._update_state()
         self.score = 0
 
     def pre_process_image(self, image):
+        self.count += 1
         image = color.rgb2gray(image)
         image = transform.resize(image, (self.width, self.height))
         image = exposure.rescale_intensity(image, out_range=(0, 255))
+        image = image.astype('float')
+        image = image / 255.0
         return image.reshape(1, self.width, self.height, 1)
 
     def _update_state(self):
         image = self.p.getScreenRGB()
+        # TODO: convert to float
         image = self.pre_process_image(image)
         state = getattr(self, 'state', None)
         if state is None:
@@ -47,7 +79,11 @@ class GameEnv(object):
         return self.state
 
     def step(self, action):
-        _ = self.p.act(action)
+        if action == 1:
+            _ = self.p.act(119)
+        else:
+            _ = self.p.act(None)
+
         self._update_state()
 
         done = False
@@ -69,14 +105,14 @@ class GameEnv(object):
 
 class DQNAgent(object):
     ACTIONS = [0, 1]
-    MAX_MEMORY = 50000
+    MAX_MEMORY = 1000000
 
     def __init__(self, action_size):
         self.action_size = action_size
 
         self.memory = deque(maxlen=self.MAX_MEMORY)
         self.gamma = 0.95    # discount rate
-        self.epsilon = 0.1  # exploration rate
+        self.epsilon = 0.7  # exploration rate
         self.epsilon_min = 0.0001
         self.epsilon_decay = 0.995
         self.learning_rate = 1e-4
@@ -87,24 +123,28 @@ class DQNAgent(object):
             log_dir=self.data_dir_path(), histogram_freq=0,
             write_graph=True, write_grads=True,
             write_images=True)
+        self.count = 0
 
     def _build_model(self, n_classes):
         model = models.Sequential()
-        model.add(layers.Conv2D(filters=32, kernel_size=(3, 3), padding='same',
+        model.add(layers.Conv2D(filters=32, kernel_size=(8, 8), padding='same',
                                 activation='relu',
                                 input_shape=(IMAGE_WIDTH, IMAGE_HEIGHT, 4),
                                 kernel_initializer='glorot_normal',
                                 bias_initializer='zeros'))
+        model.add(layers.MaxPool2D(pool_size=(2, 2)))
+
+        model.add(layers.Conv2D(filters=64, kernel_size=(4, 4), padding='same',
+                                activation='relu',
+                                kernel_initializer='glorot_normal',
+                                bias_initializer='zeros'))
+        model.add(layers.MaxPool2D(pool_size=(2, 2)))
 
         model.add(layers.Conv2D(filters=64, kernel_size=(3, 3), padding='same',
                                 activation='relu',
                                 kernel_initializer='glorot_normal',
                                 bias_initializer='zeros'))
-
-        model.add(layers.Conv2D(filters=64, kernel_size=(3, 3), padding='same',
-                                activation='relu',
-                                kernel_initializer='glorot_normal',
-                                bias_initializer='zeros'))
+        model.add(layers.MaxPool2D(pool_size=(2, 2)))
 
         model.add(layers.Flatten())
         model.add(layers.Dense(units=512, activation='relu',
@@ -157,6 +197,9 @@ class DQNAgent(object):
             action = self.ACTIONS[int(np.random.random() * 2)]
         else:
             action = self.best_action(state)
+
+        self.count += 1
+        # self.save_state(self.count, state)
         return action
 
     def decrease_epsilon(self, episode):
@@ -187,16 +230,34 @@ class DQNAgent(object):
                        callbacks=[self.callback])
 
 
+def load_queue():
+    path = os.path.join(in_dir, 'queue.pickle')
+    with open(path, 'rb') as f:
+        return pickle.load(f)
+
+
+def save_queue(queue):
+    path = os.path.join(in_dir, 'queue.pickle')
+    with open(path, 'wb') as f:
+        print('saved queue')
+        return pickle.dump(queue, f)
+
+
 def build_replay(game_env, agent):
     state = game_env.get_state()
-    for i in range(50):
-        # action = np.random.choice([0, 1], p=[0.9, 0.1])
-        action = agent.act(state)
-        next_state, reward, done, score = game_env.step(action)
-        agent.remember(state, action, reward, next_state, done)
-        if done:
-            print('score = {}'.format(score))
-        state = next_state
+    queue_path = os.path.join(in_dir, 'queue.pickle')
+    if os.path.exists(queue_path):
+        agent.memory = load_queue()
+    else:
+        for i in range(50000):
+            # action = np.random.choice([0, 1], p=[0.9, 0.1])
+            action = agent.act(state)
+            next_state, reward, done, score = game_env.step(action)
+            agent.remember(state, action, reward, next_state, done)
+            if done:
+                print('score = {}'.format(score))
+            state = next_state
+        save_queue(agent.memory)
 
 
 def train(episode_count, display):
@@ -232,12 +293,14 @@ if __name__ == '__main__':
     args = parser.parse_args()
     print(args)
 
-    if not args.display:
+    display = args.display
+    display = False
+    if not display:
         os.putenv('SDL_VIDEODRIVER', 'fbcon')
         os.environ["SDL_VIDEODRIVER"] = "dummy"
 
     from ple.games.flappybird import FlappyBird
     from ple import PLE
 
-    train(1000, args.display)
+    train(10000000, display)
 
