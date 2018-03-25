@@ -208,7 +208,8 @@ def train(episode_count):
                 break
         # train the agent with the experience of the episode
         agent.replay(32)
-        agent.save_weights()
+        if episode_count % 10 == 0:
+            agent.save_weights()
         agent.decrease_epsilon(e)
 
 
