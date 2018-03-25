@@ -1,6 +1,4 @@
 import os
-os.putenv('SDL_VIDEODRIVER', 'fbcon')
-os.environ["SDL_VIDEODRIVER"] = "dummy"
 import numpy as np
 import random
 
@@ -8,19 +6,18 @@ from collections import deque
 from keras import layers, models, optimizers, callbacks
 
 from skimage import transform, color, exposure
+import argparse
 
 out_dir = 'output/' if os.path.exists('output/') else '/output/'
 
 RUN_NAME = 'first'
 
-from ple.games.flappybird import FlappyBird
-from ple import PLE
-
 
 class GameEnv(object):
-    def __init__(self):
+
+    def __init__(self, display_screen):
         game = FlappyBird()
-        self.p = PLE(game, fps=30, display_screen=False)
+        self.p = PLE(game, fps=30, display_screen=display_screen)
         self.p.init()
 
         image = self.p.getScreenRGB()
@@ -161,35 +158,35 @@ class DQNAgent(object):
     def replay(self, batch_size):
         minibatch = random.sample(self.memory, batch_size)
 
+
         for state, action, reward, next_state, done in minibatch:
             target = reward
             if not done:
               target = reward + self.gamma * \
                        np.amax(self.model.predict(next_state)[0])
             target_f = self.model.predict(state)
-            print('    q_values : {}'.format(target_f))
             target_f[0][action] = target
-            self.model.fit(state, target_f, epochs=1, verbose=0,
-                           callbacks=[self.callback])
+
+        self.model.fit(state, target_f, epochs=1, verbose=0,
+                       callbacks=[self.callback])
 
 
 def build_replay(game_env, agent):
     state = game_env.get_state()
-    for i in range(4000):
+    for i in range(50):
         # action = np.random.choice([0, 1], p=[0.9, 0.1])
         action = agent.act(state)
         next_state, reward, done, score = game_env.step(action)
-        print(reward)
         agent.remember(state, action, reward, next_state, done)
         if done:
             print('score = {}'.format(score))
         state = next_state
 
 
-def train(episode_count):
+def train(episode_count, display):
     # initialize gym environment and the agent
     agent = DQNAgent(2)
-    game_env = GameEnv()
+    game_env = GameEnv(display)
     build_replay(game_env, agent)
 
     state = game_env.state
@@ -214,5 +211,17 @@ def train(episode_count):
 
 
 if __name__ == '__main__':
-    train(1000)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--display', type=bool, default=True)
+    args = parser.parse_args()
+    print(args)
+
+    if not args.display:
+        os.putenv('SDL_VIDEODRIVER', 'fbcon')
+        os.environ["SDL_VIDEODRIVER"] = "dummy"
+
+    from ple.games.flappybird import FlappyBird
+    from ple import PLE
+
+    train(1000, args.display)
 
