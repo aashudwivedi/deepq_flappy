@@ -190,7 +190,6 @@ class DQNAgent(object):
 
 def build_replay(game_env, agent):
     state = game_env.get_state()
-    import ipdb; ipdb.set_trace()
     for i in range(50):
         # action = np.random.choice([0, 1], p=[0.9, 0.1])
         action = agent.act(state)
