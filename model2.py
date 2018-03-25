@@ -12,44 +12,51 @@ out_dir = 'output/' if os.path.exists('output/') else '/output/'
 
 RUN_NAME = 'first'
 
+IMAGE_WIDTH = 80
+IMAGE_HEIGHT = 80
+
 
 class GameEnv(object):
 
     def __init__(self, display_screen):
-        game = FlappyBird()
-        self.p = PLE(game, fps=30, display_screen=display_screen)
-        self.p.init()
+        self.width = IMAGE_WIDTH
+        self.height = IMAGE_HEIGHT
 
-        image = self.p.getScreenRGB()
-        image = self.pre_process_image(image)
-        self.state = np.concatenate([image] * 4, axis=3)
+        self.p = PLE(FlappyBird(), fps=30, display_screen=display_screen)
+        self.p.init()
+        self.p.act(0)
+        self._update_state()
         self.score = 0
 
-    @staticmethod
-    def pre_process_image(image):
+    def pre_process_image(self, image):
         image = color.rgb2gray(image)
-        image = transform.resize(image, (80, 80))
+        image = transform.resize(image, (self.width, self.height))
         image = exposure.rescale_intensity(image, out_range=(0, 255))
-        return image.reshape(1, 80, 80, 1)
+        return image.reshape(1, self.width, self.height, 1)
+
+    def _update_state(self):
+        image = self.p.getScreenRGB()
+        image = self.pre_process_image(image)
+        state = getattr(self, 'state', None)
+        if state is None:
+            self.state = np.concatenate([image] * 4, axis=3)
+        else:
+            self.state[:, :, :, :3] = image
 
     def get_state(self):
         return self.state
 
     def step(self, action):
         _ = self.p.act(action)
-        image = self.p.getScreenRGB()
+        self._update_state()
 
         done = False
         if self.p.game_over():
             done = True
             self.p.reset_game()
             reward = -10
-
         else:
             reward = 0.1
-
-        image = self.pre_process_image(image)
-        self.state[:, :, :, :3] = image
 
         return_score = self.score + reward
         self.score = 0 if done else self.score + reward
@@ -84,7 +91,8 @@ class DQNAgent(object):
     def _build_model(self, n_classes):
         model = models.Sequential()
         model.add(layers.Conv2D(filters=32, kernel_size=(3, 3), padding='same',
-                                activation='relu', input_shape=(80, 80, 4),
+                                activation='relu',
+                                input_shape=(IMAGE_WIDTH, IMAGE_HEIGHT, 4),
                                 kernel_initializer='glorot_normal',
                                 bias_initializer='zeros'))
 
@@ -158,8 +166,13 @@ class DQNAgent(object):
     def replay(self, batch_size):
         minibatch = random.sample(self.memory, batch_size)
 
+        input_shape = [batch_size]
+        input_shape.extend(minibatch[0][0].shape[1:])
 
-        for state, action, reward, next_state, done in minibatch:
+        x = np.zeros(input_shape)
+        y = np.zeros((batch_size, 2))
+
+        for i, (state, action, reward, next_state, done) in enumerate(minibatch):
             target = reward
             if not done:
               target = reward + self.gamma * \
@@ -167,12 +180,17 @@ class DQNAgent(object):
             target_f = self.model.predict(state)
             target_f[0][action] = target
 
-        self.model.fit(state, target_f, epochs=1, verbose=0,
+            y[i] = target_f
+            x[i, :, :, :] = state
+
+        import ipdb; ipdb.set_trace()
+        self.model.fit(x, y, epochs=10, verbose=0,
                        callbacks=[self.callback])
 
 
 def build_replay(game_env, agent):
     state = game_env.get_state()
+    import ipdb; ipdb.set_trace()
     for i in range(50):
         # action = np.random.choice([0, 1], p=[0.9, 0.1])
         action = agent.act(state)
