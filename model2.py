@@ -23,6 +23,43 @@ IMAGE_WIDTH = 80
 IMAGE_HEIGHT = 80
 
 
+# class QValLogger(TensorBoard):
+#     def __init__(self, log_dir, **kwargs):
+#         # Make the original `TensorBoard` log to a subdirectory 'training'
+#         training_log_dir = os.path.join(log_dir, 'training')
+#         super(QValLogger, self).__init__(training_log_dir, **kwargs)
+#
+#         # Log the validation metrics to a separate subdirectory
+#         self.val_log_dir = os.path.join(log_dir, 'validation')
+#
+#     def set_model(self, model):
+#         # Setup writer for validation metrics
+#         self.val_writer = tf.summary.FileWriter(self.val_log_dir)
+#         super(QValLogger, self).set_model(model)
+#
+#     def on_epoch_end(self, epoch, logs=None):
+#         # Pop the validation logs and handle them separately with
+#         # `self.val_writer`. Also rename the keys so that they can
+#         # be plotted on the same figure with the training metrics
+#         logs = logs or {}
+#         val_logs = {k.replace('val_', ''): v for k, v in logs.items() if k.startswith('val_')}
+#         for name, value in val_logs.items():
+#             summary = tf.Summary()
+#             summary_value = summary.value.add()
+#             summary_value.simple_value = value.item()
+#             summary_value.tag = name
+#             self.val_writer.add_summary(summary, epoch)
+#         self.val_writer.flush()
+#
+#         # Pass the remaining logs to `TensorBoard.on_epoch_end`
+#         logs = {k: v for k, v in logs.items() if not k.startswith('val_')}
+#         super(QValLogger, self).on_epoch_end(epoch, logs)
+#
+#     def on_train_end(self, logs=None):
+#         super(QValLogger, self).on_train_end(logs)
+#         self.val_writer.close()
+
+
 def save_state(count, state):
     path = out_dir + RUN_NAME + "/images"
     print(path)
@@ -112,8 +149,8 @@ class DQNAgent(object):
 
         self.memory = deque(maxlen=self.MAX_MEMORY)
         self.gamma = 0.95    # discount rate
-        self.epsilon = 0.7  # exploration rate
-        self.epsilon_min = 0.0001
+        self.epsilon = 0.1  # exploration rate
+        self.epsilon_min = 0.01
         self.epsilon_decay = 0.995
         self.learning_rate = 1e-4
         self.model = self._build_model(self.action_size)
@@ -249,14 +286,27 @@ def build_replay(game_env, agent):
     if os.path.exists(queue_path):
         agent.memory = load_queue()
     else:
-        for i in range(50000):
-            # action = np.random.choice([0, 1], p=[0.9, 0.1])
-            action = agent.act(state)
-            next_state, reward, done, score = game_env.step(action)
-            agent.remember(state, action, reward, next_state, done)
-            if done:
-                print('score = {}'.format(score))
-            state = next_state
+        while len(agent.memory) < 50000:
+            episode = []
+            for i in range(500):
+                action = np.random.choice([0, 1], p=[0.9, 0.1])
+                # action = agent.act(state)
+                next_state, reward, done, score = game_env.step(action)
+                # agent.remember(state, action, reward, next_state, done)
+                episode.append((state, action, reward, next_state, done))
+                if done:
+                    print(score)
+                    if score > -3:
+                        agent.memory.extend(episode)
+                        print('added good episode, queue size = {}'.format(
+                            len(agent.memory)))
+                    if np.random.random() < 0.05:
+                        agent.memory.extend(episode)
+                        print('added bad episode, queue size = {}'.format(
+                            len(agent.memory)
+                        ))
+
+                state = next_state
         save_queue(agent.memory)
 
 
@@ -289,12 +339,13 @@ def train(episode_count, display):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--display', type=bool, default=True)
+    parser.add_argument('--display', dest='display', action='store_true')
+    parser.set_defaults(display=False)
     args = parser.parse_args()
     print(args)
 
     display = args.display
-    display = False
+    print('display = {}'.format(display))
     if not display:
         os.putenv('SDL_VIDEODRIVER', 'fbcon')
         os.environ["SDL_VIDEODRIVER"] = "dummy"
