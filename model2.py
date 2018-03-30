@@ -5,7 +5,7 @@ import pickle
 import random
 
 from collections import deque
-from keras import layers, models, optimizers, callbacks
+from keras import layers, models, optimizers, callbacks, backend as K
 from skimage import transform, color, exposure
 from PIL import Image
 
@@ -127,7 +127,7 @@ class GameEnv(object):
         if self.p.game_over():
             done = True
             self.p.reset_game()
-            reward = -10
+            reward = -1
         else:
             reward = 0.1
 
@@ -152,7 +152,7 @@ class DQNAgent(object):
         self.epsilon = 0.1  # exploration rate
         self.epsilon_min = 0.01
         self.epsilon_decay = 0.995
-        self.learning_rate = 1e-4
+        self.learning_rate = 1e-5
         self.model = self._build_model(self.action_size)
         self.load_weights()
         self.create_data_dir()
@@ -161,6 +161,10 @@ class DQNAgent(object):
             write_graph=True, write_grads=True,
             write_images=True)
         self.count = 0
+
+    def _huber_loss(self, target, prediction):
+        error = prediction - target
+        return K.mean(K.sqrt(1 + K.square(error)) - 1, axis=-1)
 
     def _build_model(self, n_classes):
         model = models.Sequential()
@@ -193,7 +197,7 @@ class DQNAgent(object):
                                bias_initializer='zeros'))
 
         optimizer = optimizers.Adam(lr=self.learning_rate)
-        model.compile(optimizer=optimizer, loss="mse")
+        model.compile(optimizer=optimizer, loss=self._huber_loss)
         model.summary()
         return model
 
