@@ -16,6 +16,7 @@ in_dir = 'input/' if os.path.exists('input/') else '/input/'
 if os.path.exists('input/'):
     is_local = True
 
+GOOD_SCORE = 5.5
 
 RUN_NAME = 'first'
 
@@ -149,9 +150,9 @@ class DQNAgent(object):
 
         self.memory = deque(maxlen=self.MAX_MEMORY)
         self.gamma = 0.95    # discount rate
-        self.epsilon = 0.1  # exploration rate
+        self.epsilon = 0.1 # exploration rate
         self.epsilon_min = 0.01
-        self.epsilon_decay = 0.995
+        self.epsilon_decay = 0.999
         self.learning_rate = 1e-5
         self.model = self._build_model(self.action_size)
         self.load_weights()
@@ -187,7 +188,34 @@ class DQNAgent(object):
                                 bias_initializer='zeros'))
         model.add(layers.MaxPool2D(pool_size=(2, 2)))
 
+        model.add(layers.Conv2D(filters=64, kernel_size=(3, 3), padding='same',
+                                activation='relu',
+                                kernel_initializer='glorot_normal',
+                                bias_initializer='zeros'))
+        model.add(layers.MaxPool2D(pool_size=(2, 2)))
+
+        model.add(layers.Conv2D(filters=64, kernel_size=(3, 3), padding='same',
+                                activation='relu',
+                                kernel_initializer='glorot_normal',
+                                bias_initializer='zeros'))
+        model.add(layers.MaxPool2D(pool_size=(2, 2)))
+
+        model.add(layers.Conv2D(filters=64, kernel_size=(3, 3), padding='same',
+                                activation='relu',
+                                kernel_initializer='glorot_normal',
+                                bias_initializer='zeros'))
+        model.add(layers.MaxPool2D(pool_size=(2, 2)))
+
         model.add(layers.Flatten())
+
+        model.add(layers.Dense(units=512, activation='relu',
+                               kernel_initializer='glorot_normal',
+                               bias_initializer='zeros'))
+
+        model.add(layers.Dense(units=512, activation='relu',
+                               kernel_initializer='glorot_normal',
+                               bias_initializer='zeros'))
+
         model.add(layers.Dense(units=512, activation='relu',
                                kernel_initializer='glorot_normal',
                                bias_initializer='zeros'))
@@ -267,7 +295,7 @@ class DQNAgent(object):
             y[i] = target_f
             x[i, :, :, :] = state
 
-        self.model.fit(x, y, epochs=10, verbose=0,
+        self.model.fit(x, y, epochs=1, verbose=0,
                        callbacks=[self.callback])
 
 
@@ -284,13 +312,14 @@ def save_queue(queue):
         return pickle.dump(queue, f)
 
 
-def build_replay(game_env, agent):
+def build_replay(game_env, agent, save=True):
     state = game_env.get_state()
     queue_path = os.path.join(in_dir, 'queue.pickle')
     if os.path.exists(queue_path):
         agent.memory = load_queue()
     else:
-        while len(agent.memory) < 50000:
+        print('running')
+        while True:
             episode = []
             for i in range(500):
                 action = np.random.choice([0, 1], p=[0.9, 0.1])
@@ -300,7 +329,7 @@ def build_replay(game_env, agent):
                 episode.append((state, action, reward, next_state, done))
                 if done:
                     print(score)
-                    if score > -3:
+                    if score > GOOD_SCORE:
                         agent.memory.extend(episode)
                         print('added good episode, queue size = {}'.format(
                             len(agent.memory)))
@@ -311,7 +340,8 @@ def build_replay(game_env, agent):
                         ))
 
                 state = next_state
-        save_queue(agent.memory)
+        if save:
+            save_queue(agent.memory)
 
 
 def train(episode_count, display):
@@ -325,7 +355,7 @@ def train(episode_count, display):
         for time_t in range(500):
             action = agent.act(state)
             next_state, reward, done, score = game_env.step(action)
-            agent.remember(state, action, reward, next_state, done)
+            # agent.remember(state, action, reward, next_state, done)
             state = next_state
 
             if done:
@@ -339,6 +369,12 @@ def train(episode_count, display):
         if episode_count % 10 == 0:
             agent.save_weights()
         agent.decrease_epsilon(e)
+
+
+def play():
+    agent = DQNAgent(2)
+    game_env = GameEnv(display)
+    build_replay(game_env, agent, save=False)
 
 
 if __name__ == '__main__':
@@ -357,5 +393,6 @@ if __name__ == '__main__':
     from ple.games.flappybird import FlappyBird
     from ple import PLE
 
+    # play()
     train(10000000, display)
 
